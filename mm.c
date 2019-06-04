@@ -63,6 +63,8 @@ team_t team = {
 //get header and footer address of a given block address
 #define GETHEADER(p) ((char *)(p) - WORD_SIZE)
 #define GETFOOTER(p) ((char *)(p) + GET_SIZE(GETHEADER(p)) - DOUBLE_SIZE)
+#define GETPRED(p) ((char *)(p))
+#define GETSUCC(p) ((char *)(p + WORD_SIZE))
 
 //get the next block
 #define NEXTB(p) ((char *)(p) + GET_SIZE(((char *)(p) - WORD_SIZE)))
@@ -76,15 +78,17 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
-
 //Helper function declaration
 static void* extend_heap(size_t words);
 static void* find_fit (size_t asize);
 static void* coalesce(void *block_p);
 static void place (void *bp, size_t asize);
 
-
+// variable to initialize the linkedlist
 static char *heap_p = NULL;
+static int MAXSIZE = 13;
+static void *seg_list[MAXSIZE];
+
 /* 
  * mm_init - initialize the malloc package.
  */
@@ -95,6 +99,10 @@ int mm_init(void)
     if(((heap_p = mem_sbrk(WORD_SIZE * 4)) == (void*)-1)){
         return -1;
     }
+
+    //initialize linkedlist
+    for (int i = 0; i<MAXSIZE; i++)
+        seg_list[i] = NULL;
 
     //initialize prologue
     WRITE(heap_p, 0); //alignment padding
@@ -222,12 +230,16 @@ void *mm_malloc(size_t size){
 static void* find_fit (size_t asize){
     /* First-fit search */
     void *bp;
-    /*head_p not defined here */
-    for (bp = heap_p; GET_SIZE(GETHEADER(bp))>0; bp=NEXTB(bp)){
-        if(!GET_ALLOC(GETHEADER(bp)) && (asize <= GET_SIZE(GETHEADER(bp)))){
-            return bp;
-        }
+    for (int index = find_ll_index(asize); index < MAXSIZE; index++){
+         bp= seg_list[index];
+         while (bp != NULL){
+            if(GET_SIZE(GETHEADER(bp))>=size) 
+                return bp;
+            bp=(void *)(GETSUCC(bp));
+         }
+
     }
+    /*head_p not defined here */
     return NULL; /* no fit */
 }
 
@@ -258,8 +270,6 @@ void mm_free(void *ptr){
     WRITE(GETHEADER(ptr), PACK(b_size, 0)); //free header
     WRITE(GETFOOTER(ptr), PACK(b_size, 0)); //free footer
     coalesce(ptr);
-
-    return;
 }
 
 /*
@@ -308,4 +318,30 @@ void *mm_realloc(void *ptr, size_t size)
 
     }
 
+}
+
+static int find_ll_index (sizt_t size)
+{
+    if (size<=8)
+        return 0;
+    else if(size <=16)
+        return 1;
+    else if (size<=32)
+        return 2;
+    else if (size<=64)
+        return 3;
+    else if (size<=128)
+        return 4;
+    else if (size<=256)
+        return 5;
+    else if (size<=512)
+        return 6;
+    else if (size<=1024)
+        return 7;
+    else if (size<= 2048)
+        return 8;
+    else if (size<= 4096)
+        return 9;
+    else
+        return 10;
 }
