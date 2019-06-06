@@ -65,6 +65,7 @@ team_t team = {
 #define GETFOOTER(p) ((char *)(p) + GET_SIZE(GETHEADER(p)) - DOUBLE_SIZE)
 #define GETPRED(p) ((char *)(p))
 #define GETSUCC(p) ((char *)(p + WORD_SIZE))
+#define GETADDRESS(p) (*(void **)(p))
 
 //get the next block
 #define NEXTB(p) ((char *)(p) + GET_SIZE(((char *)(p) - WORD_SIZE)))
@@ -83,6 +84,8 @@ static void* extend_heap(size_t words);
 static void* find_fit (size_t asize);
 static void* coalesce(void *block_p);
 static void place (void *bp, size_t asize);
+static void remove_block(void *block_p);
+static void insert_block(void *block_p)
 
 // variable to initialize the linkedlist
 static char *heap_p = NULL;
@@ -109,6 +112,7 @@ int mm_init(void)
     WRITE(heap_p + (1 * WORD_SIZE), PACK(DOUBLE_SIZE, 1)); //prologue header
     WRITE(heap_p + (2 * WORD_SIZE), PACK(DOUBLE_SIZE, 1)); //prologue footer
     WRITE(heap_p + (3 * WORD_SIZE), PACK(0, 1)); //epilogue header
+    heap_p += DOUBLE_SIZE;
 
     //extend the heap for with a free block of CHUNKSIZE bytes
     if (extend_heap(CHUNKSIZE/WORD_SIZE) == NULL) return -1;
@@ -131,6 +135,11 @@ static void* extend_heap(size_t words){
     //initialize header and footer for free block as well as new epilogue header
     WRITE(GETHEADER(block_p), PACK(DOUBLE_SIZE, 0)); //free block header
     WRITE(GETFOOTER(block_p), PACK(DOUBLE_SIZE, 0)); //free block footer
+
+    // initialize next and prev pointers 
+    WRITE(GETSUCC(block_p), NULL);
+    WRITE(GETPRED(block_p), NULL);
+
     WRITE(GETHEADER(NEXTB(block_p)), PACK(0, 1)); //next block header
 
     return coalesce(block_p);
@@ -233,8 +242,7 @@ static void* find_fit (size_t asize){
     for (int index = find_ll_index(asize); index < MAXSIZE; index++){
          bp= seg_list[index];
          while (bp != NULL){
-            if(GET_SIZE(GETHEADER(bp))>=size) 
-                return bp;
+            if(GET_SIZE(GETHEADER(bp))>=size) return bp;
             bp=(void *)(GETSUCC(bp));
          }
 
@@ -319,6 +327,84 @@ void *mm_realloc(void *ptr, size_t size)
     }
 
 }
+
+static void remove_block(void *block_p){
+    //calculat the size of the block that we want to take out
+    size_t bsize = GET_SIZE(HDRP(block_p));
+
+    //find its position in the seg_list
+    int index = find_ll_index (bsize);
+    char *pred = GETPRED(block_p)
+    char *succ = GETSUCC(block_p)
+
+    //remove the block from the appropriate position in the seg_list
+    if (pred == NULL && succ == NULL) seg_list[index] ==NULL;
+    else if(pred == NULL && succ != NULL){
+        GETADDRESS(GETPRED(GETADDRESS(succ))) = NULL;
+        seg_list[index] = GETADDRESS(succ);
+
+    }
+    else if (pred!= NULL && succ == NULL){
+       GETADDRESS(GETSUCC(GETADDRESS(pred))) = NULL;
+
+    }
+    else{
+        GETADDRESS(GETSUCC(GETADDRESS(pred))) = GETADDRESS(succ);
+        GETADDRESS(GETPRED(GETADDRESS(succ))) = GETADDRESS(pred);
+    }
+}
+
+static void insert_block(void *block_p){
+    //calculat the size of the block that we want to insert
+    size_t bsize = GET_SIZE(HDRP(block_p));
+
+    //find its position in the seg_list
+    int index = find_ll_index (bsize);
+    void* head = seg_list[index];
+    //if there is nothing in the index of the list
+    if(head == NULL){
+        seg_list[index] = block_p;
+        GETADDRESS(GETPRED(block_p)) = NULL;
+        GETADDRESS(GETSUCC(block_p)) = NULL;
+    }
+
+    //if the head is not NULL
+    else{
+        sizt_t bpsize = GET_SIZE(GETHEADER(block_p));
+        void* temp = NULL;
+        while ((head!= NULL) && (GET_SIZE(GETHEADER(head))<bpsize)) {
+            temp = head;
+            head = GETADDRESS(GETSUCC(head));
+        } //traverse the seg_list
+
+        //** head is the place where we insert the new block; that is, we should insert block in front of head
+        //when it gets to the end of the list, make block_p the last element of the seg_list
+        if (head ==NULL){
+            GETADDRESS(GETSUCC(temp)) = block_p;
+            GETADDRESS(GETPRED(block_p)) = temp;
+            GETADDRESS(GETSUCC(block_p)) = NULL;     
+        }
+        else{ 
+            //put the new block at the beginning of the seg_list
+            if (head == seg_list[index]){
+                GETADDRESS(GETPRED(head)) = block_p;
+                GETADDRESS(GETSUCC(block_p)) = head;
+                GETADDRESS(GETPRED(block_p)) =NULL;
+                seg_list[index] = block_p;
+            }
+
+            //insert in the middle (this situation occurs when the bpsize < side of head)
+            else{
+                GETADDRESS(GETSUCC(GETADDRESS(GETPRED(head)))) = bp;
+                GETADDRESS(GETPRED(block_p)) = GETPRED(head);
+                GETADDRESS(GETSUCC(block_p)) = head;
+                GETADDRESS(GETPRED(head)) = bp;
+
+            }
+        }
+    }
+}
+
 
 static int find_ll_index (sizt_t size)
 {
